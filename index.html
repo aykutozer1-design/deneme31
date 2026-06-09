@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pisiciler - Canlı Skor</title>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <style>
+        :root { --royal: #f4b400; --princess: #a142f4; --card-bg: rgba(255, 255, 255, 0.98); }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); background-attachment: fixed; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #333; }
+        .container { max-width: 850px; width: 100%; background: var(--card-bg); padding: 15px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); box-sizing: border-box; }
+        h1 { text-align: center; color: #1e293b; cursor: pointer; font-size: 1.6rem; margin: 10px 0 20px 0; font-weight: 800; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .header-stats { display: flex; gap: 10px; margin-bottom: 20px; width: 100%; }
+        .stat-card { flex: 1; padding: 12px; border-radius: 12px; background: white; border: 1px solid #e2e8f0; text-align: center; }
+        .stat-value { font-size: 0.95rem; font-weight: 700; display: block; margin-top: 5px; }
+        .table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; min-width: 350px; }
+        th { padding: 10px 5px; color: #64748b; font-size: 0.6rem; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; text-align: center; }
+        td { padding: 12px 5px; border-bottom: 1px solid #f1f5f9; text-align: center; font-size: 0.85rem; }
+        .status-badge { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; color: white; display: inline-block; }
+        .badge-prenses { background: var(--princess); }
+
+        /* NEON DUBLE PRENSES EFEKTİ */
+        @keyframes neon-glow {
+            0% { box-shadow: 0 0 5px #ff00ea, 0 0 10px #ff00ea; text-shadow: 0 0 5px #fff; }
+            50% { box-shadow: 0 0 15px #ff00ea, 0 0 25px #ff00ea; text-shadow: 0 0 10px #fff; }
+            100% { box-shadow: 0 0 5px #ff00ea, 0 0 10px #ff00ea; text-shadow: 0 0 5px #fff; }
+        }
+        .badge-duble { 
+            background: #000 !important; 
+            color: #ff00ea !important; 
+            border: 1px solid #ff00ea;
+            animation: neon-glow 1.5s infinite alternate;
+            padding: 4px 10px;
+            letter-spacing: 1px;
+        }
+
+        .info-box { margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border-left: 4px solid #3b82f6; font-size: 0.8rem; line-height: 1.5; }
+        .admin-only { display: none; margin-top: 20px; padding: 15px; background: #f1f5f9; border-radius: 12px; }
+        .setup-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        .save-btn { background: #10b981; color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 700; width: 100%; margin-top: 15px; cursor: pointer; }
+        .undo-btn { background: #64748b; color: white; border: none; padding: 10px; border-radius: 10px; font-weight: 600; width: 100%; margin-top: 10px; cursor: pointer; }
+        @media (min-width: 600px) { .setup-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); } h1 { font-size: 2.2rem; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 onclick="askAdmin()">♥️ Pisiciler ♠️</h1>
+    <div class="header-stats">
+        <div class="stat-card" style="border-top: 4px solid var(--royal);"><b>MEVCUT KRAL</b><span id="currentKral" class="stat-value" style="color:var(--royal);">-</span></div>
+        <div class="stat-card" style="border-top: 4px solid var(--princess);"><b>MEVCUT PRENSESLER</b><span id="currentPrensesList" class="stat-value" style="color:var(--princess);">-</span></div>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead><tr><th>Oyuncu</th><th>Puan</th><th>Kral<br>Sayı</th><th>Prenses<br>Sayı</th><th>Durum</th></tr></thead>
+            <tbody id="leaderboard"></tbody>
+        </table>
+    </div>
+    <div class="info-box">
+        <b>Puan Sistemi:</b> 1: +2 | 2: +1 | 3: -1 | 4: -2 <br>
+        <b>Denge Kuralı:</b> P1 ve P2'de tam zıt denge oluşursa, P3 sonuncusu prenses olur ve diğerleri kurtulur.
+    </div>
+    <div id="adminPanel" class="admin-only">
+        <div class="setup-grid" id="entryForm"></div>
+        <button class="save-btn" onclick="processGame()">Kaydet</button>
+        <button class="undo-btn" onclick="undoAction()">Son Kaydı Geri Al</button>
+        <button onclick="resetData()" style="background:none; color:red; font-size:10px; border:none; margin-top:10px; cursor:pointer; width:100%;">Tüm Verileri Sıfırla</button>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyDwh3PrZQbmIvbOgB0cTVsxCNNGc4yaqn8",
+        authDomain: "pisiciler.firebaseapp.com",
+        databaseURL: "https://pisiciler-default-rtdb.firebaseio.com",
+        projectId: "pisiciler",
+        storageBucket: "pisiciler.firebasestorage.app",
+        messagingSenderId: "156887660775",
+        appId: "1:156887660775:web:19a99cdd43f857ad928a42"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const playerNames = ["Aykut", "Cihan", "Eser", "Mehmet", "Güngör", "Ömer"];
+    let localState = null;
+
+    db.ref('pisiciler_v1').on('value', (snapshot) => {
+        localState = snapshot.val();
+        if(!localState) {
+            localState = {
+                players: playerNames.map(n => ({name: n, score: 0, totalKral: 0, totalPrenses: 0, status: "NORMAL"})),
+                history: [],
+                lastKrals: []
+            };
+            db.ref('pisiciler_v1').set(localState);
+        }
+        renderUI(localState);
+    });
+
+    function renderUI(data) {
+        const tbody = document.getElementById('leaderboard');
+        if(!tbody || !data.players) return;
+        tbody.innerHTML = "";
+        let sorted = [...data.players].sort((a,b) => b.score - a.score);
+        let currentPrns = [];
+
+        sorted.forEach(p => {
+            let sTxt = `<span style="color:#cbd5e1; font-style:italic;">Sivil</span>`;
+            if(p.status === "DUBLE") {
+                sTxt = `<span class="status-badge badge-duble">👑 DUBLE PRENSES 👑</span>`;
+                currentPrns.push(`<span class="status-badge badge-duble" style="font-size:10px; margin-bottom:2px;">${p.name} (Duble 👸)</span>`);
+            } else if(p.status === "PRENSES") {
+                sTxt = `<span class="status-badge badge-prenses">PRENSES</span>`;
+                currentPrns.push(p.name + " (👸)");
+            }
+            tbody.innerHTML += `<tr><td style="font-weight:600;">${p.name}</td><td><b>${p.score}</b></td><td>${p.totalKral}</td><td>${p.totalPrenses}</td><td>${sTxt}</td></tr>`;
+        });
+        document.getElementById('currentKral').innerText = data.lastKrals?.length > 0 ? data.lastKrals.join(", ") : "-";
+        document.getElementById('currentPrensesList').innerHTML = currentPrns.length > 0 ? currentPrns.join("<br>") : "Temiz.";
+    }
+
+    function askAdmin() {
+        if(prompt("Şifre:") === "1117") {
+            document.getElementById('adminPanel').style.display = 'block';
+            initForm();
+        }
+    }
+
+    function initForm() {
+        const container = document.getElementById('entryForm');
+        if(!container || container.innerHTML !== "") return;
+        for(let p=1; p<=3; p++) {
+            let h = `<div style="background:white; padding:10px; border-radius:8px; border:1px solid #ddd;"><b>Parti ${p}</b><div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px;">`;
+            for(let r=1; r<=4; r++) {
+                h += `<select id="p${p}_r${r}" style="padding:8px; font-size:12px;"><option value="">${r}. Sıra</option>`;
+                playerNames.forEach(n => h += `<option value="${n}">${n}</option>`);
+                h += `</select>`;
+            }
+            container.innerHTML += h + `</div></div>`;
+        }
+    }
+
+    function processGame() {
+        if(!localState) return alert("Veri yüklenemedi!");
+        let res = {1:[], 2:[], 3:[]};
+        let set = new Set();
+        try {
+            for(let p=1; p<=3; p++) {
+                for(let r=1; r<=4; r++) {
+                    let v = document.getElementById(`p${p}_r${r}`).value;
+                    if(!v) throw new Error(`Parti ${p}, Sıra ${r} eksik!`);
+                    res[p].push(v); set.add(v);
+                }
+            }
+            if(set.size !== 4) throw new Error("Tam 4 farklı oyuncu olmalı!");
+        } catch(e) { return alert(e.message); }
+
+        if (!localState.history) localState.history = [];
+        localState.history.push(JSON.parse(JSON.stringify({players: localState.players, lastKrals: localState.lastKrals})));
+
+        let players = Array.from(set);
+        let perf = {}; players.forEach(n => perf[n] = { b2: 0, pts: 0 });
+
+        for(let p=1; p<=3; p++) {
+            perf[res[p][0]].pts += 2; perf[res[p][1]].pts += 1;
+            perf[res[p][2]].pts -= 1; perf[res[p][2]].b2++;
+            perf[res[p][3]].pts -= 2; perf[res[p][3]].b2++;
+        }
+
+        const o1 = res[1][0], o2 = res[1][1], o3 = res[1][2], o4 = res[1][3];
+        let p2Denge = (res[2].slice(2,4).includes(o1) && res[2].slice(2,4).includes(o2)) &&
+                      (res[2].slice(0,2).includes(o3) && res[2].slice(0,2).includes(o4));
+        let specPrns = p2Denge ? res[3][3] : null;
+
+        let krals = [];
+        localState.players.forEach(p => {
+            if(set.has(p.name)) {
+                p.score += perf[p.name].pts;
+                if(res[1][0] === p.name && res[2][0] === p.name && res[3][0] === p.name) {
+                    p.totalKral++; krals.push(p.name);
+                }
+                if(specPrns) {
+                    if(p.name === specPrns) { p.totalPrenses++; p.status = (p.status === "NORMAL" ? "PRENSES" : "DUBLE"); }
+                    else p.status = "NORMAL";
+                } else {
+                    if(perf[p.name].b2 === 3) { p.totalPrenses++; p.status = (p.status === "NORMAL" ? "PRENSES" : "DUBLE"); }
+                    else if(players.some(n => perf[n].b2 === 3)) p.status = "NORMAL";
+                }
+            }
+        });
+        localState.lastKrals = krals;
+        db.ref('pisiciler_v1').set(localState).then(() => alert("Kaydedildi!"));
+    }
+
+    function undoAction() {
+        if(!localState.history || localState.history.length === 0) return alert("Geri alınacak veri yok!");
+        let lastHistory = localState.history.pop();
+        localState.players = lastHistory.players;
+        localState.lastKrals = lastHistory.lastKrals;
+        db.ref('pisiciler_v1').set(localState).then(() => alert("Son işlem geri alındı!"));
+    }
+
+    function resetData() { if(confirm("Emin misin?")) db.ref('pisiciler_v1').remove(); }
+</script>
+</body>
+</html>
