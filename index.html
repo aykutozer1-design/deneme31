@@ -66,7 +66,7 @@
         <div class="setup-grid" id="entryForm"></div>
         <button class="save-btn" onclick="processGame()">Kaydet</button>
         <button class="undo-btn" onclick="undoAction()">Son Kaydı Geri Al</button>
-        <button onclick="resetData()" style="background:none; color:red; font-size:10px; border:none; margin-top:10px; cursor:pointer; width:100%;">Tüm Verileri Sıfırla</button>
+        <button onclick="resetData()" style="background:none; color:red; font-size:10px; border:none; margin-top:10px; cursor:pointer; width:100%;">Tüm Verileri Sıfırla (Yeni Başlangıç)</button>
     </div>
 </div>
 
@@ -84,13 +84,24 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const playerNames = ["Aykut", "Cihan", "Eser", "Mehmet", "Güngör", "Ömer"];
+    
+    // Belirttiğin güncel temel puan yapısı
+    const defaultPlayersState = [
+        { name: "Eser", score: 10, totalKral: 1, totalPrenses: 0, status: "NORMAL" },
+        { name: "Mehmet", score: 7, totalKral: 1, totalPrenses: 3, status: "NORMAL" },
+        { name: "Cihan", score: -1, totalKral: 1, totalPrenses: 2, status: "NORMAL" },
+        { name: "Ömer", score: -2, totalKral: 0, totalPrenses: 0, status: "NORMAL" },
+        { name: "Güngör", score: -4, totalKral: 0, totalPrenses: 2, status: "NORMAL" },
+        { name: "Aykut", score: -10, totalKral: 0, totalPrenses: 3, status: "NORMAL" }
+    ];
+
     let localState = null;
 
     db.ref('pisiciler_v1').on('value', (snapshot) => {
         localState = snapshot.val();
         if(!localState) {
             localState = {
-                players: playerNames.map(n => ({name: n, score: 0, totalKral: 0, totalPrenses: 0, status: "NORMAL"})),
+                players: JSON.parse(JSON.stringify(defaultPlayersState)),
                 history: [],
                 lastKrals: []
             };
@@ -108,101 +119,4 @@
 
         sorted.forEach(p => {
             let sTxt = `<span style="color:#cbd5e1; font-style:italic;">Sivil</span>`;
-            if(p.status === "DUBLE") {
-                sTxt = `<span class="status-badge badge-duble">👑 DUBLE PRENSES 👑</span>`;
-                currentPrns.push(`<span class="status-badge badge-duble" style="font-size:10px; margin-bottom:2px;">${p.name} (Duble 👸)</span>`);
-            } else if(p.status === "PRENSES") {
-                sTxt = `<span class="status-badge badge-prenses">PRENSES</span>`;
-                currentPrns.push(p.name + " (👸)");
-            }
-            tbody.innerHTML += `<tr><td style="font-weight:600;">${p.name}</td><td><b>${p.score}</b></td><td>${p.totalKral}</td><td>${p.totalPrenses}</td><td>${sTxt}</td></tr>`;
-        });
-        document.getElementById('currentKral').innerText = data.lastKrals?.length > 0 ? data.lastKrals.join(", ") : "-";
-        document.getElementById('currentPrensesList').innerHTML = currentPrns.length > 0 ? currentPrns.join("<br>") : "Temiz.";
-    }
-
-    function askAdmin() {
-        if(prompt("Şifre:") === "1117") {
-            document.getElementById('adminPanel').style.display = 'block';
-            initForm();
-        }
-    }
-
-    function initForm() {
-        const container = document.getElementById('entryForm');
-        if(!container || container.innerHTML !== "") return;
-        for(let p=1; p<=3; p++) {
-            let h = `<div style="background:white; padding:10px; border-radius:8px; border:1px solid #ddd;"><b>Parti ${p}</b><div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px;">`;
-            for(let r=1; r<=4; r++) {
-                h += `<select id="p${p}_r${r}" style="padding:8px; font-size:12px;"><option value="">${r}. Sıra</option>`;
-                playerNames.forEach(n => h += `<option value="${n}">${n}</option>`);
-                h += `</select>`;
-            }
-            container.innerHTML += h + `</div></div>`;
-        }
-    }
-
-    function processGame() {
-        if(!localState) return alert("Veri yüklenemedi!");
-        let res = {1:[], 2:[], 3:[]};
-        let set = new Set();
-        try {
-            for(let p=1; p<=3; p++) {
-                for(let r=1; r<=4; r++) {
-                    let v = document.getElementById(`p${p}_r${r}`).value;
-                    if(!v) throw new Error(`Parti ${p}, Sıra ${r} eksik!`);
-                    res[p].push(v); set.add(v);
-                }
-            }
-            if(set.size !== 4) throw new Error("Tam 4 farklı oyuncu olmalı!");
-        } catch(e) { return alert(e.message); }
-
-        if (!localState.history) localState.history = [];
-        localState.history.push(JSON.parse(JSON.stringify({players: localState.players, lastKrals: localState.lastKrals})));
-
-        let players = Array.from(set);
-        let perf = {}; players.forEach(n => perf[n] = { b2: 0, pts: 0 });
-
-        for(let p=1; p<=3; p++) {
-            perf[res[p][0]].pts += 2; perf[res[p][1]].pts += 1;
-            perf[res[p][2]].pts -= 1; perf[res[p][2]].b2++;
-            perf[res[p][3]].pts -= 2; perf[res[p][3]].b2++;
-        }
-
-        const o1 = res[1][0], o2 = res[1][1], o3 = res[1][2], o4 = res[1][3];
-        let p2Denge = (res[2].slice(2,4).includes(o1) && res[2].slice(2,4).includes(o2)) &&
-                      (res[2].slice(0,2).includes(o3) && res[2].slice(0,2).includes(o4));
-        let specPrns = p2Denge ? res[3][3] : null;
-
-        let krals = [];
-        localState.players.forEach(p => {
-            if(set.has(p.name)) {
-                p.score += perf[p.name].pts;
-                if(res[1][0] === p.name && res[2][0] === p.name && res[3][0] === p.name) {
-                    p.totalKral++; krals.push(p.name);
-                }
-                if(specPrns) {
-                    if(p.name === specPrns) { p.totalPrenses++; p.status = (p.status === "NORMAL" ? "PRENSES" : "DUBLE"); }
-                    else p.status = "NORMAL";
-                } else {
-                    if(perf[p.name].b2 === 3) { p.totalPrenses++; p.status = (p.status === "NORMAL" ? "PRENSES" : "DUBLE"); }
-                    else if(players.some(n => perf[n].b2 === 3)) p.status = "NORMAL";
-                }
-            }
-        });
-        localState.lastKrals = krals;
-        db.ref('pisiciler_v1').set(localState).then(() => alert("Kaydedildi!"));
-    }
-
-    function undoAction() {
-        if(!localState.history || localState.history.length === 0) return alert("Geri alınacak veri yok!");
-        let lastHistory = localState.history.pop();
-        localState.players = lastHistory.players;
-        localState.lastKrals = lastHistory.lastKrals;
-        db.ref('pisiciler_v1').set(localState).then(() => alert("Son işlem geri alındı!"));
-    }
-
-    function resetData() { if(confirm("Emin misin?")) db.ref('pisiciler_v1').remove(); }
-</script>
-</body>
-</html>
+            if
